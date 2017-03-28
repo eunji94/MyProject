@@ -7,6 +7,23 @@ Applying a Deep Residual Network to BSDS500 Dataset.
 import tensorflow as tf
 import numpy as np
 import bsds500
+import input_bsds500
+import matplotlib.pyplot as plt
+
+import sys
+import numpy
+from scipy import signal
+from scipy import ndimage
+
+def fspecial_gauss(size, sigma):
+    """Function to mimic the 'fspecial' gaussian MATLAB function
+    """
+    x, y = numpy.mgrid[-size//2 + 1:size//2 + 1, -size//2 + 1:size//2 + 1]
+    g = numpy.exp(-((x**2 + y**2)/(2.0*sigma**2)))
+    return g/g.sum()
+
+def init_weights(shape):
+    return tf.Variable(tf.random_normal(shape, stddev=0.01))
 
 def block(X, W1, W2):
     conv1 = tf.nn.conv2d(X, W1, strides=[1,1,1,1], padding='SAME')
@@ -14,12 +31,13 @@ def block(X, W1, W2):
     conv2 = tf.nn.conv2d(X, W2, strides=[1,1,1,1], padding='SAME')
     relu2 = tf.nn.relu(conv2)
 
-    return X+relu
+    return X+relu2
 
 def ssim(img1, img2, cs_map=False):
+    """
     size = 11
     sigma = 1.5
-    window = gauss.fspecial_gauss(size, sigma)
+    window = fspecial_gauss(size, sigma)
     K1 = 0.01
     K2 = 0.03
     L = 255
@@ -40,12 +58,14 @@ def ssim(img1, img2, cs_map=False):
     else:
         return ((2*mu1_mu2 + C1)*(2*sigma12 + C2))/((mu1_sq + mu2_sq + C1)*
                     (sigma1_sq + sigma2_sq + C2))
+    """
+    return 0
 
 def psnr(target, ref):
 	diff = ref - target
-	diff = diff.flatten('C')
-	rmse = math.sqrt( np.mean(diff ** 2.) )
-	return 20*math.log10(1.0/rmse)
+	diff = tf.reshape(diff, [tf.size(diff)])
+	rmse = tf.sqrt( tf.reduce_mean(diff ** 2.) )
+	return 20*tf.log(1.0/rmse)/tf.log(tf.constant(10.))
 
 total_step = 100
 batch_size = 32
@@ -54,9 +74,9 @@ height = 50
 n = 10
 
 # Data loading
-(trainX, trainY), (testX, testY), (valX, valY) = load_data()
-X = X.reshape([-1, 50, 50, 3])
-Y = Y.reshape([-1, 50, 50, 3])
+(trainX, trainY), (testX, testY), (valX, valY) = input_bsds500.load_data()
+trainX = trainX.reshape([-1, 50, 50, 3])
+trainY = trainY.reshape([-1, 50, 50, 3])
 testX = testX.reshape([-1, 50, 50, 3])
 textY = testY.reshape([-1, 50, 50, 3])
 valX = valX.reshape([-1, 50, 50, 3])
@@ -99,7 +119,7 @@ eval_psnr = psnr(Y_, Y)
 eval_ssim = ssim(Y_, Y)
 train_op = tf.train.AdamOptimizer(0.001, 0.9).minimize(cost)
 
-init = tf.initialize_all_variables()
+init = tf.global_variables_initializer()
 
 with tf.Session() as sess:
     sess.run(init)
@@ -121,7 +141,7 @@ with tf.Session() as sess:
                              range(batch_size, len(valX)+1, batch_size))
             for start, end in eval_batch:
                 p, s = sess.run([train_op, eval_psnr, eval_ssim],
-                                feed_dict={X: evalX[start:end], Y: evalY[start:end]})
+                                feed_dict={X: valX[start:end], Y: valY[start:end]})
                 avg_psnr += p/eval_batch
                 avg_ssim += s/eval_batch
 
@@ -129,6 +149,25 @@ with tf.Session() as sess:
             print("Step: ", '%4d'%(step+1), "Cost = ", "{:.9f}".format(avg_cost),
                   "PSNR =", "{:.9f}".format(avg_psnr), "SSIM =", "{:.9f}".format(avg_ssim))
 
+    print("Optimization Finished!")
+    
+    import random
+    r = random.randrange(len(testX))
+    prediction = sess.run(Y_, {X: testX[r:r+1]})
+    a = fig.add_subplot(1,3,1)
+    a.set_title('Noise Image(Input)')
+    plt.imshow(testX[r:r+1])
+    b = fig.add_subplot(1,3,2)
+    b.set_title('Denoise Image(Output)')
+    b.set_xlabel("PSNR = ", "{:.9f}".format(psnr(prediction, testY[r:r+1])),
+                 "SSIM = ", "{:.9f}".format(ssim(prediction, testY[r:r+1])))
+    plt.imshow(prediction)
+    c = fig.add_subplot(1,3,3)
+    c.set_title('Clean Image(Compare)')
+    plt.imshow(testY[r:r+1])
+
+    fig.suptitle('Random Test')
+    plt.show()
     
 """
 filename = "sample.jpeg"
