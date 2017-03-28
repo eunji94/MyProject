@@ -72,8 +72,8 @@ def jpg_to_tensor(dirname):
         else:
             X = np.concatenate((X, x[None, ...]))
             Y = np.concatenate((Y, y[None, ...]))
-        if (i+1) % 10 == 0:
-            print(i+1, " / ", len(file_list), "Loading")
+        if (i+1) % 20 == 0:
+            print(i+1, " / ", len(file_list), "Loading...")
 
     return X, Y
 
